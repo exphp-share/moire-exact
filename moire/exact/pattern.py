@@ -5,16 +5,12 @@ from sympy import lcm
 import itertools
 
 from .constants import SYMP_EYE, SYMP_ZERO
+from moire.util import public
 
-__all__ = '''
-	MoirePattern
-'''.split()
-
+@public
 class MoirePattern:
 	'''
-	Describes a Moire pattern as:
-	 * The unit cells for each layer, A and B.
-	 * The rational matrix E such that EA = B.
+	Describes a Moire pattern produced by two cells A and B.
 
 	A MoirePattern may have free variables;
 	However, once there are no free variables in E,
@@ -112,23 +108,24 @@ class MoirePattern:
 	cells.__doc__    = ''' The two unit cells A and B. '''
 
 
-	# FIXME confusing; this transforms B as well
-	def mult_fixed_cart(self, mat):
+	_NOT_SPECIFIED = object()
+	def visit_family(self, qa, qb=_NOT_SPECIFIED):
+		''' Get another moire pattern with the same cartesian transformation
+		but different cells, by multiplying each cell on the left by a rational matrix.
+
+		visit_family(self, matrix):  multiplies both cells by the same matrix.
+		visit_family(self, qa, qb):  multiples each cell by a different matrix.
+		                             (use None for an identity transform)
 		'''
-		Multiply A by a rational matrix and perform a similarity
-		transform on E, producing a new moire pattern described
-		by the same overall cartesian transformation.
-		(M.T == A2.inv . E . A1)
-		'''
-		mat = ImmutableMatrix(mat)
-		assert all(x.is_rational for x in mat)
+		if qb is self._NOT_SPECIFIED: qb = qa
+		if qa is None: qa = SYMP_EYE
+		if qb is None: qb = SYMP_EYE
 		return type(self).from_abe(
-			a=mat * self._a,
-			b=mat * self._b,
-			e=mat * self._e * mat.inv(),
+			a=qa * self._a,
+			b=qb * self._b,
+			e=qb * self._e * qa.inv(),
 			c=None, # invalidated!
 		)
-
 
 	def d_matrix(self):
 		'''
@@ -181,5 +178,3 @@ class MoirePattern:
 
 	def __repr__(self):
 		return 'MoirePattern.from_abe(\n\ta = {},\n\tb = {},\n\te = {})'.format(self._a, self._b, self._e)
-
-
