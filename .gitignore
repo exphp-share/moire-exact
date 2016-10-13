@@ -1,0 +1,6 @@
+_essentials.cpp
+build/
+*.so
+*.egg*
+__pycache__
+*.pyc
