@@ -1,0 +1,7 @@
+attrs:
+  Figure: {}
+  Grid:
+    grid_line_color: null
+
+  Title:
+    text_font_size: '10pt'
