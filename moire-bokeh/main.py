@@ -2,10 +2,15 @@ import numpy as np
 
 from bokeh.io import curdoc
 from bokeh.layouts import row, column
-from bokeh.models import ColumnDataSource, Slider, TextInput, Select
+from bokeh.models import ColumnDataSource, TextInput
 from bokeh.plotting import figure
 from bokeh.models import Range1d
 from itertools import starmap
+
+# FIXME: Imports like this are fragile in python 3 due to packages
+#        taking precedence over local files.
+from ui import SliderTextInputPair
+from ui import ShapeSelect
 
 SHAPES = {
 	'hexagonal': np.array([[1.0, 0.0], [0.5, 3**0.5/2]]),
@@ -17,7 +22,7 @@ def main():
 	index_radius = [30,30]
 
 	# set up plot (styling in theme.yaml)
-	plot = figure(toolbar_location=None, title='test', plot_width=600, plot_height=600)
+	plot = figure(toolbar_location=None, title='test')
 	source1 = ColumnDataSource(data=dict(x=[], y=[]))
 	source2 = ColumnDataSource(data=dict(x=[], y=[]))
 	plot.circle('x', 'y', source=source2, size=5, color='black')
@@ -42,9 +47,8 @@ def main():
 		def rotation_matrix(theta):
 			s,c = np.sin(theta), np.cos(theta)
 			return np.array([[c,-s],[s,c]])
-		def get_cell(shape_name, rotation=0, scale=1):
-			cell = SHAPES[shape_name]
-			return cell.dot(rotation_matrix(rotation).transpose())*scale
+		def transform_cell(cell, rotation=0, scale=1):
+			return np.array(cell).dot(rotation_matrix(rotation).transpose())*scale
 
 		def cart_data(i, j, cell):
 			ijs = np.column_stack([i, j])
@@ -53,8 +57,8 @@ def main():
 			return dict(x=x, y=y)
 
 		from math import radians
-		cell1 = get_cell(controls.shape_1())
-		cell2 = get_cell(controls.shape_2(),
+		cell1 = controls.cell_1()
+		cell2 = transform_cell(controls.cell_2(),
 			rotation=radians(controls.rotation()),
 			scale=(1 + controls.scale()),
 		)
@@ -119,9 +123,6 @@ class Controls:
 		# The helper functions automatically set up callbacks,
 		#  and add attributes (e.g. self.scale)
 
-		# The actual callback self.callback is not set here;
-		# it is set
-
 		def slider_pair(attr, **kw):
 			widget = SliderTextInputPair(**kw)
 			setattr(self, attr, lambda: widget.value)
@@ -139,61 +140,48 @@ class Controls:
 			return widget
 
 		def select_shape(title, attr, **kw):
-			widget = Select(options=list(SHAPES), **kw)
-			setattr(self, attr, lambda: widget.value)
-			widget.on_change('value', lambda a,b,c: self._callback(a,b,c))
-			return widget
+			widget = ShapeSelect(label=title, **kw)
+			setattr(self, attr, lambda: widget.cell())
+			widget.add_callback(lambda a,b,c: self._callback(a,b,c))
+			return widget.model
 
-		scale_widget = slider_pair(
+		scale = slider_pair(
 			title="Scale", attr='scale',
 			type=float, value=0.018,
 			start=0.0, end=3.0, step=0.0001,
 			)
 
-		rotation_widget = slider_pair(
+		rotation = slider_pair(
 			title="Rotation", attr='rotation',
 			type=float, value=10.8,
 			start=0.0, end=60.0, step=0.0001,
 			)
 
-		translation_widget = slider_pair(
+		translation = slider_pair(
 			title="Translation", attr='translation',
 			type=float, value=0.5,
 			start=0.0, end=0.5, step=0.0001,
 			)
 
-		center_i_widget = text_input(
+		center_i = text_input(
 			title="Viewpoint Center I", attr='center_i',
 			type=float, value="0",
 		)
 
-		center_j_widget = text_input(
+		center_j = text_input(
 			title="Viewpoint Center J", attr='center_j',
 			type=float, value="0",
 		)
 
-		shape_1 = select_shape(
-			title='Layer 1', attr='shape_1',
-			value='hexagonal',
-		)
-		shape_2 = select_shape(
-			title='Layer 2', attr='shape_2',
-			value='hexagonal',
-		)
+		shape_1 = select_shape(title='Layer 1', attr='cell_1')
+		shape_2 = select_shape(title='Layer 2', attr='cell_2')
 
 		self.model = \
 			column(
-#				widgetbox(
-					scale_widget,
-					rotation_widget,
-					translation_widget,
-#				),
-				row(
-					center_i_widget,
-					center_j_widget,
-				),
-				row(shape_1, shape_2),
-			width=600)
+				column(scale, rotation, translation),
+				row(center_i, center_j),
+				column(shape_1, shape_2),
+			)
 
 	# For setting the callback once it exists;
 	# It is not possible to provide the callback on initialization
@@ -205,56 +193,5 @@ class Controls:
 	#       Controls instance is never replaced.
 	def set_callback(self, cb):
 		self._callback = cb
-
-class SliderTextInputPair:
-	def __init__(self, type, value, **kw):
-		self._type = type
-		self._slider = Slider(
-			value=value,
-			width=350,
-			# HACK: try to limit buildup of callbacks to some degree
-			callback_policy='throttle',
-			# Slider has more props worth configuring than TextInput
-			# so we just forward keyword args.
-			**kw)
-		self._input  = TextInput(
-			width=50,
-			value=str(value),
-			)
-		# self._callback is added later
-		self.value = value
-		# FIXME: This doesn't actually put the elements in a row!
-		self.model = row(
-			self._slider,
-			self._input,
-		)
-
-	def _slider_cb(self, attr, old, new):
-		self.value = new
-		self._set_input_value(self.value)
-		self._callback(attr, old, new)
-
-	def _input_cb(self, attr, old, new):
-		try: self.value = self._type(new)
-		except ValueError: return
-		self._set_slider_value(self.value)
-		self._callback(attr, old, new)
-
-	def _set_slider_value(self, value):
-		# NOTE: This assumes bound methods for the same instance always
-		#       have the same id; I don't know if this is guaranteed.
-		self._slider.remove_on_change('value', self._slider_cb)
-		self._slider.value = value
-		self._slider.on_change('value', self._slider_cb)
-
-	def _set_input_value(self, value):
-		self._input.remove_on_change('value', self._input_cb)
-		self._input.value = str(value)
-		self._input.on_change('value', self._input_cb)
-
-	def add_callback(self, callback):
-		self._callback = callback
-		self._slider.on_change('value', self._slider_cb)
-		self._input.on_change('value', self._input_cb)
 
 main()
