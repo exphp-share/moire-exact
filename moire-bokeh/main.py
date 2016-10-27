@@ -1,11 +1,16 @@
 import numpy as np
 
 from bokeh.io import curdoc
-from bokeh.layouts import widgetbox, row, column
-from bokeh.models import ColumnDataSource, Slider, TextInput
+from bokeh.layouts import row, column
+from bokeh.models import ColumnDataSource, Slider, TextInput, Select
 from bokeh.plotting import figure
 from bokeh.models import Range1d
 from itertools import starmap
+
+SHAPES = {
+	'hexagonal': np.array([[1.0, 0.0], [0.5, 3**0.5/2]]),
+	'square':    np.array([[1.0, 0.0], [0.0, 1.0]]),
+}
 
 def main():
 	zoom = 4
@@ -28,15 +33,17 @@ def main():
 	# I'm just going to write one big miserable mess of a function
 	# so terrible that my OCPD will be incapable of "fixing" it
 	def update():
+		print('S', controls.scale(), 'R', controls.rotation(), 'T', controls.translation(),
+		      'I', controls.center_i(), 'J', controls.center_j())
 		direct_center = [controls.center_i(), controls.center_j()]
 		if None in direct_center: # an invalid value was typed
 			direct_center = [0., 0.]
 
-		HEX_CELL = np.array([[1, 0], [0.5, 3**0.5/2]])
 		def rotation_matrix(theta):
 			s,c = np.sin(theta), np.cos(theta)
 			return np.array([[c,-s],[s,c]])
-		def get_cell(cell, rotation=0, scale=1):
+		def get_cell(shape_name, rotation=0, scale=1):
+			cell = SHAPES[shape_name]
 			return cell.dot(rotation_matrix(rotation).transpose())*scale
 
 		def cart_data(i, j, cell):
@@ -46,8 +53,8 @@ def main():
 			return dict(x=x, y=y)
 
 		from math import radians
-		cell1 = get_cell(HEX_CELL)
-		cell2 = get_cell(HEX_CELL,
+		cell1 = get_cell(controls.shape_1())
+		cell2 = get_cell(controls.shape_2(),
 			rotation=radians(controls.rotation()),
 			scale=(1 + controls.scale()),
 		)
@@ -131,6 +138,12 @@ class Controls:
 			widget.on_change('value', lambda a,b,c: self._callback(a,b,c))
 			return widget
 
+		def select_shape(title, attr, **kw):
+			widget = Select(options=list(SHAPES), **kw)
+			setattr(self, attr, lambda: widget.value)
+			widget.on_change('value', lambda a,b,c: self._callback(a,b,c))
+			return widget
+
 		scale_widget = slider_pair(
 			title="Scale", attr='scale',
 			type=float, value=0.018,
@@ -159,6 +172,15 @@ class Controls:
 			type=float, value="0",
 		)
 
+		shape_1 = select_shape(
+			title='Layer 1', attr='shape_1',
+			value='hexagonal',
+		)
+		shape_2 = select_shape(
+			title='Layer 2', attr='shape_2',
+			value='hexagonal',
+		)
+
 		self.model = \
 			column(
 #				widgetbox(
@@ -170,6 +192,7 @@ class Controls:
 					center_i_widget,
 					center_j_widget,
 				),
+				row(shape_1, shape_2),
 			width=600)
 
 	# For setting the callback once it exists;
