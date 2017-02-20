@@ -5,26 +5,31 @@ from bokeh.layouts import row, column
 from bokeh.models import ColumnDataSource, TextInput
 from bokeh.plotting import figure
 from bokeh.models import Range1d
+from bokeh.models import HoverTool
 from itertools import starmap
 
 # FIXME: Imports like this are fragile in python 3 due to packages
 #        taking precedence over local files.
+from ui import float_eval
 from ui import SliderTextInputPair
 from ui import ShapeSelect
-
-SHAPES = {
-	'hexagonal': np.array([[1.0, 0.0], [0.5, 3**0.5/2]]),
-	'square':    np.array([[1.0, 0.0], [0.0, 1.0]]),
-}
 
 def main():
 	zoom = 4
 	index_radius = [30,30]
 
+	hover = HoverTool(
+		tooltips=[
+			("layer", "@layer"),
+			("index", "(@i, @j)"),
+			("(x,y)", "($x, $y)"),
+		],
+	)
+
 	# set up plot (styling in theme.yaml)
-	plot = figure(toolbar_location=None, title='test')
-	source1 = ColumnDataSource(data=dict(x=[], y=[]))
-	source2 = ColumnDataSource(data=dict(x=[], y=[]))
+	plot = figure(toolbar_location=None, title='test', tools=[hover])
+	source1 = ColumnDataSource(data=dict(x=[], y=[], i=[], j=[]))
+	source2 = ColumnDataSource(data=dict(x=[], y=[], i=[], j=[]))
 	plot.circle('x', 'y', source=source2, size=5, color='black')
 	plot.circle('x', 'y', source=source1, size=10)
 
@@ -50,11 +55,11 @@ def main():
 		def transform_cell(cell, rotation=0, scale=1):
 			return np.array(cell).dot(rotation_matrix(rotation).transpose())*scale
 
-		def cart_data(i, j, cell):
-			ijs = np.column_stack([i, j])
+		def cart_data(i, j, cell, shift):
+			ijs = np.column_stack([i, j]) + shift
 			xys = ijs.dot(cell)
 			x,y = xys.transpose()
-			return dict(x=x, y=y)
+			return dict(x=x, y=y, i=i, j=j)
 
 		from math import radians
 		cell1 = controls.cell_1()
@@ -88,8 +93,10 @@ def main():
 
 		i1,j1 = direct_coords(cell1, cart_center)
 		i2,j2 = direct_coords(cell2, cart_center)
-		source1.data = cart_data(i1,                          j1, cell1)
-		source2.data = cart_data(i2 + controls.translation(), j2, cell2)
+		source1.data = cart_data(i1, j1, cell1, [0,0])
+		source1.data['layer'] = [1] * len(i1)
+		source2.data = cart_data(i2, j2, cell2, [controls.translation(), 0])
+		source2.data['layer'] = [2] * len(i1)
 
 	def callback(i, dont, care):
 		update()
@@ -147,30 +154,30 @@ class Controls:
 
 		scale = slider_pair(
 			title="Scale", attr='scale',
-			type=float, value=0.018,
+			type=float_eval, value=0.018,
 			start=0.0, end=3.0, step=0.0001,
 			)
 
 		rotation = slider_pair(
 			title="Rotation", attr='rotation',
-			type=float, value=10.8,
+			type=float_eval, value=10.8,
 			start=0.0, end=60.0, step=0.0001,
 			)
 
 		translation = slider_pair(
 			title="Translation", attr='translation',
-			type=float, value=0.5,
+			type=float_eval, value=0.5,
 			start=0.0, end=0.5, step=0.0001,
 			)
 
 		center_i = text_input(
 			title="Viewpoint Center I", attr='center_i',
-			type=float, value="0",
+			type=float_eval, value="0",
 		)
 
 		center_j = text_input(
 			title="Viewpoint Center J", attr='center_j',
-			type=float, value="0",
+			type=float_eval, value="0",
 		)
 
 		shape_1 = select_shape(title='Layer 1', attr='cell_1')

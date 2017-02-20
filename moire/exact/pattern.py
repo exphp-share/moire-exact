@@ -7,6 +7,11 @@ import itertools
 from .constants import SYMP_EYE, SYMP_ZERO
 from moire.util import public
 
+# Used to provide "keyword-only" args in a python-2 compatible manner.
+# It stands as a canary argument in some functions to ensure that they
+#  do not receive more positional arguments than expected.
+MAGIC=object()
+
 @public
 class MoirePattern:
 	'''
@@ -16,9 +21,10 @@ class MoirePattern:
 	However, once there are no free variables in E,
 	 a commensurate supercell can be obtained.
 	'''
-	def __init__(self, *, dont_use):
+	def __init__(self, dont_use):
 		''' Do not initialize directly. Please use the named constructors instead. '''
-		pass
+		if dont_use is not MAGIC:
+			raise RuntimeError('Do not initialize directly. Please use the named constructors instead.')
 
 	@classmethod
 	def from_cells(klass, a, b):
@@ -26,7 +32,7 @@ class MoirePattern:
 		return klass.from_abe(a, b, b*a.inv())
 
 	@classmethod
-	def from_opers(klass, a1, *, a2=None, scale=1, rows=SYMP_EYE, cart=SYMP_EYE):
+	def from_opers(klass, a1, use_kw_args=MAGIC, a2=None, scale=1, rows=SYMP_EYE, cart=SYMP_EYE):
 		'''
 		Construct from one cell matrix A and two transformations.
 
@@ -34,10 +40,12 @@ class MoirePattern:
 		each side;  B = M1 * A * M2^T.  Effectively, M1 takes a linear combination
 		of the rows, while M2 operates on each row as a cartesian vector.
 		'''
+		if use_kw_args is not MAGIC:
+			raise ValueError('Please use kw args only after a1')
 		return klass.from_cells(a1, scale * rows * (a2 or a1) * cart.T)
 
 	@classmethod
-	def from_abe(klass, a, b, e, *, c=None):
+	def from_abe(klass, a, b, e, use_kw_args=MAGIC, c=None):
 		'''
 		Primary constructor.
 
@@ -46,7 +54,9 @@ class MoirePattern:
 		meaningful variables. It also validates the relation between A, B, and E,
 		and computes the supercell matrix once enough variables have been substituted.
 		'''
-		self = klass(dont_use=0)
+		if use_kw_args is not MAGIC:
+			raise ValueError('Please use kw args only after the required args')
+		self = klass(dont_use=MAGIC)
 		assert simplify(e * a - b) == SYMP_ZERO, "{} \n VERSUS \n {}".format(e*a, b)
 		(self._a, self._b, self._e) = (ImmutableMatrix(simplify(x)) for x in (a,b,e))
 		self._c = c
@@ -82,7 +92,7 @@ class MoirePattern:
 		''' Flip the roles of A and B. '''
 		# NOTE: C is thrown away and recomputed due to the
 		#       invariant that we only store the HNF cell.
-		return self.from_cells(self._b, self._a, self._e.inv())
+		return self.from_abe(self._b, self._a, self._e.inv())
 
 	def _checked_c(self):
 		if not self._c:
@@ -130,17 +140,17 @@ class MoirePattern:
 	def d_matrix(self):
 		'''
 		Get the (integer) matrix D which describes the commensurate cell
-		in terms of B;  CA == BD.  This matrix is not necessarily in HNF.
+		in terms of B;  CA == DB.  This matrix is not necessarily in HNF.
 		'''
-		return self._e.inv() * self._checked_c()
+		return self._checked_c() * self._e.inv()
 
 	def d_matrix_hnf(self):
 		'''
 		Get the HNF form of the matrix D which describes the commensurate cell
-		in terms of B.  This matrix will not satisfy  CA == BD; however, CA
-		 and BD will be related by a unimodular transformation.
+		in terms of B.  This matrix will not satisfy  CA == DB; however, CA
+		 and DB will be related by a unimodular transformation.
 		'''
-		return self.swap_cells().c_hnf_matrix()
+		return self.swap_cells().c_matrix_hnf()
 
 	def commensurate_cell(self):
 		'''

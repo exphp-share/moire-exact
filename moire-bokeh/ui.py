@@ -61,13 +61,13 @@ class ShapeSelect:
 
 		self._rotation = SliderTextInputPair(
 			title="Angle α",
-			type=float, value=90,
+			type=float_eval, value=90,
 			start=1e-3, end=180-1e-3, step=1e-3,
 			)
 
 		self._ratio = SliderTextInputPair(
 			title="Ratio b/a",
-			type=float, value=1.0,
+			type=float_eval, value=1.0,
 			start=0.25, end=4.0, step=0.01,
 			)
 
@@ -89,3 +89,10 @@ class ShapeSelect:
 		self._ratio.add_callback(callback)
 
 
+
+def float_eval(s):
+	# NOTE: by no means is this intended to be secure
+	badchars = set(s) - set(' \t1234567890.eE-+*/()')
+	if badchars:
+		raise ValueError
+	return float(eval(s))

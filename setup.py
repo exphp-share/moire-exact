@@ -15,5 +15,10 @@ setup(
 	author = 'Michael Lamparski',
 	author_email = 'lampam@rpi.edu',
 
-	install_requires=['numpy', 'sympy'],
+	install_requires=[
+		'numpy',
+		'sympy',
+		'pyg', # <-- good luck with that one
+		       #     (btw, how on earth did you find THIS package?)
+	],
 )
